@@ -1,0 +1,5 @@
+{
+  "name": "ChamadoTec Pro",
+  "description": "An intuitive web application for managing technical support tickets, with client and user registration, role-based access control, and an insightful dashboard for tracking ticket status and technician performance.",
+  "requestFramePermissions": []
+}
