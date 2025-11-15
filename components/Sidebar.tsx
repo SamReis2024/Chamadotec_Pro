@@ -1,7 +1,7 @@
 import React from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { Role, Page } from '../types';
-import { ChartPieIcon, TicketIcon, UserGroupIcon, BuildingOfficeIcon, XMarkIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
+import { ChartPieIcon, TicketIcon, UserGroupIcon, BuildingOfficeIcon, XMarkIcon, ShieldCheckIcon, Cog6ToothIcon } from '@heroicons/react/24/outline';
 
 interface SidebarProps {
     sidebarOpen: boolean;
@@ -26,9 +26,11 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
     const navItems: NavItemConfig[] = [
         { page: 'dashboard', label: 'Dashboard', icon: ChartPieIcon, roles: [Role.ADMIN, Role.MANAGER, Role.TECHNICIAN] },
         { page: 'tickets', label: 'Chamados', icon: TicketIcon, roles: [Role.ADMIN, Role.MANAGER, Role.TECHNICIAN] },
+        { page: 'reports', label: 'Relatórios', icon: ChartPieIcon, roles: [Role.ADMIN, Role.MANAGER, Role.TECHNICIAN] },
         { page: 'clients', label: 'Clientes', icon: BuildingOfficeIcon, roles: [Role.ADMIN, Role.MANAGER] },
         { page: 'users', label: 'Usuários', icon: UserGroupIcon, roles: [Role.ADMIN] },
         { page: 'audit', label: 'Auditoria', icon: ShieldCheckIcon, roles: [Role.ADMIN] },
+        { page: 'settings', label: 'Configurações', icon: Cog6ToothIcon, roles: [Role.ADMIN] },
     ];
 
     const availableNavItems = navItems.filter(item => user && item.roles.includes(user.role));

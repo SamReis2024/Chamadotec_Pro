@@ -18,24 +18,35 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const [currentPage, setCurrentPage] = useState<Page>('dashboard');
 
     useEffect(() => {
+        console.log('useEffect - Verificando usuário logado...');
         const loggedInUser = authService.getCurrentUser();
+        console.log('Usuário recuperado do sessionStorage:', loggedInUser);
         if (loggedInUser) {
+            console.log('Usuário encontrado, atualizando estado...');
             setUser(loggedInUser);
             db.setCurrentUserId(loggedInUser.id);
+        } else {
+            console.log('Nenhum usuário encontrado no sessionStorage');
         }
     }, []);
 
     const login = async (email: string, password: string) => {
+        console.log('Tentando fazer login com:', { email });
         const loggedInUser = await authService.login(email, password);
+        console.log('Resposta do login:', loggedInUser ? 'Sucesso' : 'Falha');
         setUser(loggedInUser);
         if(loggedInUser) {
+            console.log('Login bem-sucedido, redirecionando para dashboard');
             setCurrentPage('dashboard');
             db.setCurrentUserId(loggedInUser.id);
+        } else {
+            console.log('Falha no login - credenciais inválidas');
         }
         return loggedInUser;
     };
 
     const logout = () => {
+        console.log('Realizando logout...');
         authService.logout();
         setUser(null);
         db.clearCurrentUserId();

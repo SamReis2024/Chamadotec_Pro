@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { db } from '../services/mockDB';
 import { AuditLog, User, AuditAction } from '../types';
 
@@ -13,8 +13,31 @@ const AuditPage: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
 
     useEffect(() => {
-        setLogs(db.getAuditLogs());
-        setUsers(db.getUsers());
+        let active = true;
+
+        const loadData = async () => {
+            try {
+                const [logsData, usersData] = await Promise.all([
+                    db.getAuditLogs(),
+                    db.getUsers(),
+                ]);
+
+                if (!active) {
+                    return;
+                }
+
+                setLogs(logsData);
+                setUsers(usersData);
+            } catch (error) {
+                console.error('Erro ao carregar auditoria:', error);
+            }
+        };
+
+        loadData();
+
+        return () => {
+            active = false;
+        };
     }, []);
 
     const getUserName = (userId: string) => {

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from 'recharts';
 import { Ticket, Status } from '../types';
 
 interface DashboardChartProps {
@@ -43,7 +43,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ tickets }) => {
                     <Legend />
                     <Bar dataKey="Chamados" fill="#8884d8">
                         {data.map((entry, index) => (
-                           <Bar key={`bar-${index}`} dataKey="Chamados" fill={colors[entry.name as Status]} />
+                            <Cell key={`cell-${index}`} fill={colors[entry.name as Status]} />
                         ))}
                     </Bar>
                 </BarChart>

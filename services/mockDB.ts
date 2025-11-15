@@ -1,59 +1,124 @@
+import { supabase } from './supabaseClient';
 import { User, Client, Ticket, Role, Status, Priority, AuditLog, AuditAction } from '../types';
 
-const DB_KEY = 'helpdesk_pro_db';
+type UserRow = {
+    id: string;
+    name: string;
+    email: string;
+    password: string;
+    role: Role;
+    created_at: string;
+};
 
-interface Database {
-    users: User[];
-    clients: Client[];
-    tickets: Ticket[];
-    auditLogs: AuditLog[];
-}
+type ClientRow = {
+    id: string;
+    name: string;
+    contact_person: string;
+    email: string;
+    phone: string;
+    address: string;
+    city: string;
+    state: string;
+    agency_number: string | null;
+    agency_name: string | null;
+    created_at: string;
+    updated_at: string;
+};
 
-const getInitialData = (): Database => ({
-    users: [
-        { id: 'user-1', name: 'Admin User', email: 'admin@helpdesk.com', password: 'password123', role: Role.ADMIN, createdAt: new Date('2023-01-01') },
-        { id: 'user-2', name: 'Manager User', email: 'manager@helpdesk.com', password: 'password123', role: Role.MANAGER, createdAt: new Date('2023-01-02') },
-        { id: 'user-3', name: 'Alice Johnson', email: 'alice@helpdesk.com', password: 'password123', role: Role.TECHNICIAN, createdAt: new Date('2023-01-03') },
-        { id: 'user-4', name: 'Bob Williams', email: 'bob@helpdesk.com', password: 'password123', role: Role.TECHNICIAN, createdAt: new Date('2023-01-04') },
-        { id: 'user-5', name: 'Charlie Brown', email: 'charlie@helpdesk.com', password: 'password123', role: Role.TECHNICIAN, createdAt: new Date('2023-01-05') },
-    ],
-    clients: [
-        { id: 'client-1', name: 'Innovate Corp', contactPerson: 'John Doe', email: 'john@innovate.com', phone: '123-456-7890', address: '123 Tech Street', city: 'São Paulo', state: 'SP', createdAt: new Date('2023-02-01') },
-        { id: 'client-2', name: 'Solutions Inc', contactPerson: 'Jane Smith', email: 'jane@solutions.com', phone: '098-765-4321', address: '456 Business Ave', city: 'Rio de Janeiro', state: 'RJ', createdAt: new Date('2023-02-05') },
-        { id: 'client-3', name: 'MegaHoldings', contactPerson: 'Peter Jones', email: 'peter@megahold.com', phone: '555-555-5555', address: '789 Enterprise Blvd', city: 'Belo Horizonte', state: 'MG', createdAt: new Date('2023-02-10') },
-    ],
-    tickets: [
-        { id: 'ticket-1', title: 'Printer not working', description: 'The main office printer is not responding.', clientId: 'client-1', technicianId: 'user-3', status: Status.IN_PROGRESS, priority: Priority.HIGH, createdAt: new Date(), updatedAt: new Date(), location: 'São Paulo' },
-        { id: 'ticket-2', title: 'Cannot access email', description: 'User Jane Smith from Solutions Inc cannot access her email account.', clientId: 'client-2', technicianId: 'user-4', status: Status.OPEN, priority: Priority.URGENT, createdAt: new Date(), updatedAt: new Date(), location: 'Rio de Janeiro' },
-        { id: 'ticket-3', title: 'Software installation request', description: 'Install new accounting software on 5 machines.', clientId: 'client-1', technicianId: 'user-3', status: Status.CLOSED, priority: Priority.MEDIUM, createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000), updatedAt: new Date(), location: 'São Paulo' },
-        { id: 'ticket-4', title: 'Network is slow', description: 'The entire network at MegaHoldings is running slow since this morning.', clientId: 'client-3', technicianId: null, status: Status.OPEN, priority: Priority.HIGH, createdAt: new Date(), updatedAt: new Date(), location: 'Belo Horizonte' },
-        { id: 'ticket-5', title: 'Request new mouse', description: 'The mouse for the front desk computer is broken.', clientId: 'client-2', technicianId: 'user-4', status: Status.PENDING, priority: Priority.LOW, createdAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), updatedAt: new Date(), location: 'Rio de Janeiro' },
-    ],
-    auditLogs: [],
+type TicketRow = {
+    id: string;
+    code: string;
+    title: string;
+    description: string;
+    client_id: string;
+    technician_id: string | null;
+    status: Status;
+    priority: Priority;
+    location: string;
+    found_defect: string | null;
+    executed_services: string | null;
+    technician_notes: string | null;
+    client_notes: string | null;
+    equipment_info: string | null;
+    under_warranty: boolean;
+    working: boolean;
+    service_completed: boolean;
+    verified_by_client: boolean;
+    technician_signature: string | null;
+    client_signature: string | null;
+    created_at: string;
+    updated_at: string;
+};
+
+type AuditLogRow = {
+    id: string;
+    user_id: string | null;
+    action: AuditAction;
+    entity: string;
+    entity_id: string | null;
+    details: string;
+    created_at: string;
+};
+
+const mapUser = (row: UserRow): User => ({
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    createdAt: new Date(row.created_at),
 });
 
-class MockDB {
-    private db: Database;
-    private currentUserId: string | null = null;
+const mapClient = (row: ClientRow): Client => ({
+    id: row.id,
+    name: row.name,
+    contactPerson: row.contact_person,
+    email: row.email,
+    phone: row.phone,
+    address: row.address,
+    city: row.city,
+    state: row.state,
+    agencyNumber: row.agency_number ?? undefined,
+    agencyName: row.agency_name ?? undefined,
+    createdAt: new Date(row.created_at),
+});
 
-    constructor() {
-        const savedDb = localStorage.getItem(DB_KEY);
-        if (savedDb) {
-            this.db = JSON.parse(savedDb, (key, value) => {
-                if (key.endsWith('At') && value) {
-                    return new Date(value);
-                }
-                return value;
-            });
-             // Ensure auditLogs is an array
-            if (!Array.isArray(this.db.auditLogs)) {
-                this.db.auditLogs = [];
-            }
-        } else {
-            this.db = getInitialData();
-            this.save();
-        }
-    }
+const mapTicket = (row: TicketRow): Ticket => ({
+    id: row.id,
+    code: row.code,
+    title: row.title,
+    description: row.description,
+    clientId: row.client_id,
+    technicianId: row.technician_id,
+    status: row.status,
+    priority: row.priority,
+    location: row.location,
+    foundDefect: row.found_defect ?? undefined,
+    executedServices: row.executed_services ?? undefined,
+    technicianNotes: row.technician_notes ?? undefined,
+    clientNotes: row.client_notes ?? undefined,
+    equipmentInfo: row.equipment_info ?? undefined,
+    underWarranty: row.under_warranty,
+    working: row.working,
+    serviceCompleted: row.service_completed,
+    verifiedByClient: row.verified_by_client,
+    technicianSignature: row.technician_signature ?? undefined,
+    clientSignature: row.client_signature ?? undefined,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+});
+
+const mapAuditLog = (row: AuditLogRow): AuditLog => ({
+    id: row.id,
+    userId: row.user_id,
+    action: row.action,
+    entity: row.entity,
+    entityId: row.entity_id,
+    details: row.details,
+    createdAt: new Date(row.created_at),
+});
+
+class SupabaseDB {
+    private currentUserId: string | null = null;
 
     public setCurrentUserId(userId: string | null) {
         this.currentUserId = userId;
@@ -63,155 +128,349 @@ class MockDB {
         this.currentUserId = null;
     }
 
-    private save() {
-        localStorage.setItem(DB_KEY, JSON.stringify(this.db));
-    }
-
-    private logAction(action: AuditAction, entity: string, entityId: string, details: string) {
+    private async logAction(action: AuditAction, entity: string, entityId: string, details: string) {
         if (!this.currentUserId) {
-            console.warn('Cannot log action: currentUserId is not set.');
+            console.warn('Não é possível registrar auditoria sem usuário autenticado.');
             return;
         }
-        const logEntry: AuditLog = {
-            id: `log-${Date.now()}`,
-            userId: this.currentUserId,
+
+        const { error } = await supabase.from('audit_logs').insert({
+            user_id: this.currentUserId,
             action,
             entity,
-            entityId,
+            entity_id: entityId,
             details,
-            createdAt: new Date(),
+        });
+
+        if (error) {
+            console.error('Falha ao registrar auditoria:', error);
+        }
+    }
+    
+    // Users
+    public async getUsers(): Promise<User[]> {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            throw new Error(`Erro ao carregar usuários: ${error.message}`);
+        }
+
+        return (data ?? []).map(row => mapUser(row as UserRow));
+    }
+
+    public async getUserById(id: string): Promise<User | null> {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', id)
+            .maybeSingle();
+
+        if (error) {
+            throw new Error(`Erro ao buscar usuário: ${error.message}`);
+        }
+
+        return data ? mapUser(data) : null;
+    }
+    
+    public async getUserByEmail(email: string): Promise<(User & { password?: string }) | null> {
+        const { data, error } = await supabase
+            .from('users')
+            .select('*')
+            .eq('email', email.toLowerCase())
+            .maybeSingle();
+
+        if (error) {
+            throw new Error(`Erro ao buscar usuário por email: ${error.message}`);
+        }
+
+        if (!data) {
+            return null;
+        }
+
+        return {
+            ...mapUser(data),
+            password: data.password,
         };
-        this.db.auditLogs.unshift(logEntry); // Add to the beginning of the array
-    }
-    
-    // Generic CRUD
-    private getAll<T extends keyof Database>(table: T): Database[T] {
-        return this.db[table];
-    }
-    
-    private getById<T extends keyof Database>(table: T, id: string): Database[T][number] | undefined {
-        return this.db[table].find((item: any) => item.id === id);
-    }
-    
-    private create<T extends keyof Database>(table: T, item: Omit<Database[T][number], 'id' | 'createdAt' | 'updatedAt'>): Database[T][number] {
-        const newItem = {
-            ...item,
-            id: `${table.slice(0, -1)}-${Date.now()}`,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        } as Database[T][number];
-        (this.db[table] as any).push(newItem);
-        // Logging is handled by public methods
-        this.save();
-        return newItem;
     }
 
-    private update<T extends keyof Database>(table: T, id: string, updates: Partial<Database[T][number]>): Database[T][number] | undefined {
-        const itemIndex = this.db[table].findIndex((item: any) => item.id === id);
-        if (itemIndex > -1) {
-            this.db[table][itemIndex] = { ...this.db[table][itemIndex], ...updates, updatedAt: new Date() };
-            // Logging is handled by public methods
-            this.save();
-            return this.db[table][itemIndex];
+    public async createUser(user: Omit<User, 'id' | 'createdAt'> & { password: string }): Promise<User> {
+        const { data, error } = await supabase
+            .from('users')
+            .insert({
+                name: user.name,
+                email: user.email.toLowerCase(),
+                password: user.password,
+                role: user.role,
+            })
+            .select('*')
+            .single();
+
+        if (error) {
+            throw new Error(`Erro ao criar usuário: ${error.message}`);
         }
-        return undefined;
-    }
-    
-    private delete<T extends keyof Database>(table: T, id: string): boolean {
-        const initialLength = this.db[table].length;
-        this.db[table] = this.db[table].filter((item: any) => item.id !== id) as any;
-        if (this.db[table].length < initialLength) {
-            // Logging is handled by public methods
-            this.save();
-            return true;
-        }
-        return false;
+
+        const row = data as UserRow;
+        await this.logAction(AuditAction.CREATE, 'Usuário', row.id, `Usuário '${row.name}' criado.`);
+        return mapUser(row);
     }
 
-    // User-specific methods
-    public getUsers = () => this.getAll('users');
-    public getUserById = (id: string) => this.getById('users', id);
-    public getUserByEmail = (email: string) => this.db.users.find(u => u.email === email);
-    public createUser = (user: Omit<User, 'id'|'createdAt'>) => {
-        const newUser = this.create('users', user);
-        this.logAction(AuditAction.CREATE, 'Usuário', newUser.id, `Usuário '${newUser.name}' criado.`);
-        return newUser;
-    }
-    public updateUser = (id: string, updates: Partial<User>) => {
-        const updatedUser = this.update('users', id, updates);
-        if(updatedUser) {
-            this.logAction(AuditAction.UPDATE, 'Usuário', id, `Usuário '${updatedUser.name}' atualizado.`);
+    public async updateUser(id: string, updates: Partial<User>): Promise<User> {
+        const payload: Partial<UserRow> = {};
+
+        if (updates.name !== undefined) payload.name = updates.name;
+        if (updates.email !== undefined) payload.email = updates.email.toLowerCase();
+        if (updates.role !== undefined) payload.role = updates.role;
+
+        const { data, error } = await supabase
+            .from('users')
+            .update(payload)
+            .eq('id', id)
+            .select('*')
+            .single();
+
+        if (error) {
+            throw new Error(`Erro ao atualizar usuário: ${error.message}`);
         }
-        return updatedUser;
+
+        const row = data as UserRow;
+        await this.logAction(AuditAction.UPDATE, 'Usuário', id, `Usuário '${row.name}' atualizado.`);
+        return mapUser(row);
     }
-    public deleteUser = (id: string) => {
-        const userToDelete = this.getUserById(id);
-        if(userToDelete) {
-             const result = this.delete('users', id);
-             if(result){
-                 this.logAction(AuditAction.DELETE, 'Usuário', id, `Usuário '${userToDelete.name}' excluído.`);
+
+    public async deleteUser(id: string): Promise<void> {
+        const user = await this.getUserById(id);
+        const { error } = await supabase.from('users').delete().eq('id', id);
+
+        if (error) {
+            throw new Error(`Erro ao excluir usuário: ${error.message}`);
+        }
+
+        if (user) {
+            await this.logAction(AuditAction.DELETE, 'Usuário', id, `Usuário '${user.name}' excluído.`);
              }
-             return result;
-        }
-        return false;
-    }
-    
-    // Client-specific methods
-    public getClients = () => this.getAll('clients');
-    public getClientById = (id: string) => this.getById('clients', id);
-    public createClient = (client: Omit<Client, 'id'|'createdAt'>) => {
-        const newClient = this.create('clients', client);
-        this.logAction(AuditAction.CREATE, 'Cliente', newClient.id, `Cliente '${newClient.name}' criado.`);
-        return newClient;
-    }
-    public updateClient = (id: string, updates: Partial<Client>) => {
-        const updatedClient = this.update('clients', id, updates);
-        if(updatedClient) {
-            this.logAction(AuditAction.UPDATE, 'Cliente', id, `Cliente '${updatedClient.name}' atualizado.`);
-        }
-        return updatedClient;
-    }
-    public deleteClient = (id: string) => {
-        const clientToDelete = this.getClientById(id);
-        if(clientToDelete) {
-            const result = this.delete('clients', id);
-            if(result){
-                this.logAction(AuditAction.DELETE, 'Cliente', id, `Cliente '${clientToDelete.name}' excluído.`);
-            }
-            return result;
-        }
-        return false;
     }
 
-    // Ticket-specific methods
-    public getTickets = () => this.getAll('tickets');
-    public getTicketById = (id: string) => this.getById('tickets', id);
-    public createTicket = (ticket: Omit<Ticket, 'id'|'createdAt'|'updatedAt'>) => {
-        const newTicket = this.create('tickets', ticket);
-        this.logAction(AuditAction.CREATE, 'Chamado', newTicket.id, `Chamado '${newTicket.title}' criado.`);
-        return newTicket;
-    }
-    public updateTicket = (id: string, updates: Partial<Ticket>) => {
-        const updatedTicket = this.update('tickets', id, updates);
-        if(updatedTicket) {
-             this.logAction(AuditAction.UPDATE, 'Chamado', id, `Chamado '${updatedTicket.title}' atualizado.`);
+    // Clients
+    public async getClients(): Promise<Client[]> {
+        const { data, error } = await supabase
+            .from('clients')
+            .select('*')
+            .order('created_at', { ascending: true });
+
+        if (error) {
+            throw new Error(`Erro ao carregar clientes: ${error.message}`);
         }
-        return updatedTicket;
+
+        return (data ?? []).map(row => mapClient(row as ClientRow));
     }
-    public deleteTicket = (id: string) => {
-        const ticketToDelete = this.getTicketById(id);
-        if (ticketToDelete) {
-            const result = this.delete('tickets', id);
-            if(result) {
-                this.logAction(AuditAction.DELETE, 'Chamado', id, `Chamado '${ticketToDelete.title}' excluído.`);
+
+    public async getClientById(id: string): Promise<Client | null> {
+        const { data, error } = await supabase
+            .from('clients')
+            .select('*')
+            .eq('id', id)
+            .maybeSingle();
+
+        if (error) {
+            throw new Error(`Erro ao buscar cliente: ${error.message}`);
+        }
+
+        return data ? mapClient(data) : null;
+    }
+
+    public async createClient(client: Omit<Client, 'id' | 'createdAt'>): Promise<Client> {
+        const { data, error } = await supabase
+            .from('clients')
+            .insert({
+                name: client.name,
+                contact_person: client.contactPerson,
+                email: client.email,
+                phone: client.phone,
+                address: client.address,
+                city: client.city,
+                state: client.state,
+                agency_number: client.agencyNumber ?? null,
+                agency_name: client.agencyName ?? null,
+            })
+            .select('*')
+            .single();
+
+        if (error) {
+            throw new Error(`Erro ao criar cliente: ${error.message}`);
+        }
+
+        const row = data as ClientRow;
+        await this.logAction(AuditAction.CREATE, 'Cliente', row.id, `Cliente '${row.name}' criado.`);
+        return mapClient(row);
+    }
+
+    public async updateClient(id: string, updates: Partial<Client>): Promise<Client> {
+        const payload: Partial<ClientRow> = {};
+
+        if (updates.name !== undefined) payload.name = updates.name;
+        if (updates.contactPerson !== undefined) payload.contact_person = updates.contactPerson;
+        if (updates.email !== undefined) payload.email = updates.email;
+        if (updates.phone !== undefined) payload.phone = updates.phone;
+        if (updates.address !== undefined) payload.address = updates.address;
+        if (updates.city !== undefined) payload.city = updates.city;
+        if (updates.state !== undefined) payload.state = updates.state;
+        if (updates.agencyNumber !== undefined) payload.agency_number = updates.agencyNumber ?? null;
+        if (updates.agencyName !== undefined) payload.agency_name = updates.agencyName ?? null;
+
+        const { data, error } = await supabase
+            .from('clients')
+            .update(payload)
+            .eq('id', id)
+            .select('*')
+            .single();
+
+        if (error) {
+            throw new Error(`Erro ao atualizar cliente: ${error.message}`);
+        }
+
+        const row = data as ClientRow;
+        await this.logAction(AuditAction.UPDATE, 'Cliente', id, `Cliente '${row.name}' atualizado.`);
+        return mapClient(row);
+    }
+
+    public async deleteClient(id: string): Promise<void> {
+        const client = await this.getClientById(id);
+        const { error } = await supabase.from('clients').delete().eq('id', id);
+
+        if (error) {
+            throw new Error(`Erro ao excluir cliente: ${error.message}`);
+        }
+
+        if (client) {
+            await this.logAction(AuditAction.DELETE, 'Cliente', id, `Cliente '${client.name}' excluído.`);
             }
-            return result;
-        }
-        return false;
     }
-    
-    // AuditLog-specific methods
-    public getAuditLogs = () => this.getAll('auditLogs');
+
+    // Tickets
+    public async getTickets(): Promise<Ticket[]> {
+        const { data, error } = await supabase
+            .from('tickets')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            throw new Error(`Erro ao carregar chamados: ${error.message}`);
+        }
+
+        return (data ?? []).map(row => mapTicket(row as TicketRow));
+    }
+
+    public async createTicket(ticket: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'code'>): Promise<Ticket> {
+        const { data, error } = await supabase
+            .from('tickets')
+            .insert({
+                title: ticket.title,
+                description: ticket.description,
+                client_id: ticket.clientId,
+                technician_id: ticket.technicianId,
+                status: ticket.status,
+                priority: ticket.priority,
+                location: ticket.location,
+                found_defect: ticket.foundDefect ?? null,
+                executed_services: ticket.executedServices ?? null,
+                technician_notes: ticket.technicianNotes ?? null,
+                client_notes: ticket.clientNotes ?? null,
+                equipment_info: ticket.equipmentInfo ?? null,
+                under_warranty: ticket.underWarranty ?? false,
+                working: ticket.working ?? false,
+                service_completed: ticket.serviceCompleted ?? false,
+                verified_by_client: ticket.verifiedByClient ?? false,
+                technician_signature: ticket.technicianSignature ?? null,
+                client_signature: ticket.clientSignature ?? null,
+            })
+            .select('*')
+            .single();
+
+        if (error) {
+            throw new Error(`Erro ao criar chamado: ${error.message}`);
+        }
+
+        const row = data as TicketRow;
+        await this.logAction(AuditAction.CREATE, 'Chamado', row.id, `Chamado '${row.title}' criado.`);
+        return mapTicket(row);
+    }
+
+    public async updateTicket(id: string, updates: Partial<Ticket>): Promise<Ticket> {
+        const payload: Partial<TicketRow> = {};
+
+        if (updates.title !== undefined) payload.title = updates.title;
+        if (updates.description !== undefined) payload.description = updates.description;
+        if (updates.clientId !== undefined) payload.client_id = updates.clientId;
+        if (updates.technicianId !== undefined) payload.technician_id = updates.technicianId;
+        if (updates.status !== undefined) payload.status = updates.status;
+        if (updates.priority !== undefined) payload.priority = updates.priority;
+        if (updates.location !== undefined) payload.location = updates.location;
+        if (updates.foundDefect !== undefined) payload.found_defect = updates.foundDefect ?? null;
+        if (updates.executedServices !== undefined) payload.executed_services = updates.executedServices ?? null;
+        if (updates.technicianNotes !== undefined) payload.technician_notes = updates.technicianNotes ?? null;
+        if (updates.clientNotes !== undefined) payload.client_notes = updates.clientNotes ?? null;
+        if (updates.equipmentInfo !== undefined) payload.equipment_info = updates.equipmentInfo ?? null;
+        if (updates.underWarranty !== undefined) payload.under_warranty = updates.underWarranty;
+        if (updates.working !== undefined) payload.working = updates.working;
+        if (updates.serviceCompleted !== undefined) payload.service_completed = updates.serviceCompleted;
+        if (updates.verifiedByClient !== undefined) payload.verified_by_client = updates.verifiedByClient;
+        if (updates.technicianSignature !== undefined) payload.technician_signature = updates.technicianSignature ?? null;
+        if (updates.clientSignature !== undefined) payload.client_signature = updates.clientSignature ?? null;
+
+        const { data, error } = await supabase
+            .from('tickets')
+            .update(payload)
+            .eq('id', id)
+            .select('*')
+            .single();
+
+        if (error) {
+            throw new Error(`Erro ao atualizar chamado: ${error.message}`);
+        }
+
+        const row = data as TicketRow;
+        await this.logAction(AuditAction.UPDATE, 'Chamado', id, `Chamado '${row.title}' atualizado.`);
+        return mapTicket(row);
+    }
+
+    public async deleteTicket(id: string): Promise<void> {
+        const { data: ticketData, error: fetchError } = await supabase
+            .from('tickets')
+            .select('id, title')
+            .eq('id', id)
+            .maybeSingle();
+
+        if (fetchError) {
+            throw new Error(`Erro ao buscar chamado para exclusão: ${fetchError.message}`);
+        }
+
+        const { error } = await supabase.from('tickets').delete().eq('id', id);
+
+        if (error) {
+            throw new Error(`Erro ao excluir chamado: ${error.message}`);
+        }
+
+        if (ticketData) {
+            await this.logAction(AuditAction.DELETE, 'Chamado', id, `Chamado '${ticketData.title}' excluído.`);
+            }
+    }
+
+    // Audit logs
+    public async getAuditLogs(): Promise<AuditLog[]> {
+        const { data, error } = await supabase
+            .from('audit_logs')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            throw new Error(`Erro ao carregar auditoria: ${error.message}`);
+        }
+
+        return (data ?? []).map(row => mapAuditLog(row as AuditLogRow));
+    }
 }
 
-export const db = new MockDB();
+export const db = new SupabaseDB();

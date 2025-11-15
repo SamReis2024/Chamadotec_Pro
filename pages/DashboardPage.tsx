@@ -9,7 +9,24 @@ const DashboardPage: React.FC = () => {
     const [tickets, setTickets] = useState<Ticket[]>([]);
 
     useEffect(() => {
-        setTickets(db.getTickets());
+        let isMounted = true;
+
+        const loadTickets = async () => {
+            try {
+                const data = await db.getTickets();
+                if (isMounted) {
+                    setTickets(data);
+                }
+            } catch (error) {
+                console.error('Erro ao carregar chamados:', error);
+            }
+        };
+
+        loadTickets();
+
+        return () => {
+            isMounted = false;
+        };
     }, []);
 
     const openTickets = tickets.filter(t => t.status === Status.OPEN).length;

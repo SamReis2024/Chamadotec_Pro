@@ -7,12 +7,18 @@ import TicketsPage from './pages/TicketsPage';
 import ClientsPage from './pages/ClientsPage';
 import UsersPage from './pages/UsersPage';
 import AuditPage from './pages/AuditPage';
+import ReportsPage from './pages/ReportsPage';
+import SettingsPage from './pages/SettingsPage';
 import { Role } from './types';
 
 const AppContent: React.FC = () => {
     const { user, currentPage, setCurrentPage } = useAuth();
+    
+    console.log('Usuário atual:', user);
+    console.log('Página atual:', currentPage);
 
     if (!user) {
+        console.log('Nenhum usuário autenticado, redirecionando para login');
         return <LoginPage />;
     }
 
@@ -35,6 +41,13 @@ const AppContent: React.FC = () => {
             case 'audit':
                 if (user.role === Role.ADMIN) {
                     return <AuditPage />;
+                }
+                break;
+            case 'reports':
+                return <ReportsPage />;
+            case 'settings':
+                if (user.role === Role.ADMIN) {
+                    return <SettingsPage />;
                 }
                 break;
             default:

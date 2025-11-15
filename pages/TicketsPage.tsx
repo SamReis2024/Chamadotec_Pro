@@ -1,7 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { db } from '../services/mockDB';
+import { settingsService } from '../services/settingsService';
 import { Ticket, User, Client, Role, Status, Priority } from '../types';
-import { MagnifyingGlassIcon, PencilIcon, TrashIcon, ExclamationTriangleIcon, CheckCircleIcon } from '@heroicons/react/24/outline';
+import { MagnifyingGlassIcon, PencilIcon, TrashIcon, ExclamationTriangleIcon, CheckCircleIcon, PrinterIcon } from '@heroicons/react/24/outline';
 import { useDebounce } from '../hooks/useDebounce';
 import { useAuth } from '../hooks/useAuth';
 
@@ -32,7 +33,10 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, technicianName, clientN
     <div className={`bg-white dark:bg-slate-800 shadow-md rounded-lg p-4 flex flex-col justify-between border-l-4 ${priorityColors[ticket.priority]}`}>
         <div>
             <div className="flex justify-between items-start">
-                <h3 className="text-lg font-bold text-slate-800 dark:text-white">{ticket.title}</h3>
+                <div className="flex flex-col">
+                    <h3 className="text-lg font-bold text-slate-800 dark:text-white">{ticket.title}</h3>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 mt-1">Código: {ticket.code}</span>
+                </div>
                 <span className={`px-2 py-1 text-xs font-semibold rounded-full ${statusColors[ticket.status]}`}>
                     {ticket.status}
                 </span>
@@ -77,7 +81,7 @@ const TicketsPage: React.FC = () => {
     const [showDeleteToast, setShowDeleteToast] = useState(false);
 
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-    const initialNewTicketState: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt'> = {
+    const initialNewTicketState: Omit<Ticket, 'id' | 'createdAt' | 'updatedAt' | 'code'> = {
         title: '',
         description: '',
         clientId: '',
@@ -85,6 +89,17 @@ const TicketsPage: React.FC = () => {
         status: Status.OPEN,
         priority: Priority.MEDIUM,
         location: '',
+        foundDefect: '',
+        executedServices: '',
+        technicianNotes: '',
+        clientNotes: '',
+        equipmentInfo: '',
+        underWarranty: false,
+        working: false,
+        serviceCompleted: false,
+        verifiedByClient: false,
+        technicianSignature: '',
+        clientSignature: '',
     };
     const [newTicket, setNewTicket] = useState(initialNewTicketState);
 
@@ -102,9 +117,33 @@ const TicketsPage: React.FC = () => {
     }, [showDeleteToast]);
 
     useEffect(() => {
-        setTickets(db.getTickets());
-        setUsers(db.getUsers());
-        setClients(db.getClients());
+        let active = true;
+
+        const loadData = async () => {
+            try {
+                const [ticketsData, usersData, clientsData] = await Promise.all([
+                    db.getTickets(),
+                    db.getUsers(),
+                    db.getClients(),
+                ]);
+
+                if (!active) {
+                    return;
+                }
+
+                setTickets(ticketsData);
+                setUsers(usersData);
+                setClients(clientsData);
+            } catch (error) {
+                console.error('Erro ao carregar dados iniciais:', error);
+            }
+        };
+
+        loadData();
+
+        return () => {
+            active = false;
+        };
     }, []);
 
     const technicians = useMemo(() => users.filter(u => u.role === Role.TECHNICIAN), [users]);
@@ -121,8 +160,23 @@ const TicketsPage: React.FC = () => {
         return tickets
             .filter(ticket => {
                 if (!debouncedSearchTerm) return true;
-                const lowerCaseSearch = debouncedSearchTerm.toLowerCase();
-                return ticket.title.toLowerCase().includes(lowerCaseSearch) || ticket.description.toLowerCase().includes(lowerCaseSearch);
+                const q = debouncedSearchTerm.toLowerCase();
+                const techName = getUserName(ticket.technicianId).toLowerCase();
+                const clientName = getClientName(ticket.clientId).toLowerCase();
+                const haystack = [
+                    ticket.code,
+                    ticket.title,
+                    ticket.description,
+                    clientName,
+                    techName,
+                    ticket.location,
+                    ticket.foundDefect || '',
+                    ticket.executedServices || '',
+                    ticket.technicianNotes || '',
+                    ticket.clientNotes || '',
+                    ticket.equipmentInfo || '',
+                ].join(' ').toLowerCase();
+                return haystack.includes(q);
             })
             .filter(ticket => !technicianFilter || ticket.technicianId === technicianFilter)
             .filter(ticket => !locationFilter || ticket.location === locationFilter)
@@ -154,8 +208,12 @@ const TicketsPage: React.FC = () => {
         setSortOrder('date-desc');
     };
 
-    const getUserName = (id: string | null) => users.find(u => u.id === id)?.name || 'Não atribuído';
-    const getClientName = (id: string) => clients.find(c => c.id === id)?.name || 'Desconhecido';
+    function getUserName(id: string | null) {
+        return users.find(u => u.id === id)?.name || 'Não atribuído';
+    }
+    function getClientName(id: string) {
+        return clients.find(c => c.id === id)?.name || 'Desconhecido';
+    }
 
     const handleCreateInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -168,23 +226,364 @@ const TicketsPage: React.FC = () => {
                 location: location
             }));
         } else {
+            const booleanFields = new Set(['underWarranty','working','serviceCompleted','verifiedByClient']);
             setNewTicket(prev => ({
                 ...prev,
-                [name]: name === 'technicianId' ? (value === '' ? null : value) : value
+                [name]: name === 'technicianId' ? (value === '' ? null : value) : (booleanFields.has(name) ? value === 'true' : value)
             }));
         }
     };
 
-    const handleCreateTicket = (e: React.FormEvent) => {
+    const refreshTickets = async () => {
+        const freshTickets = await db.getTickets();
+        setTickets(freshTickets);
+    };
+
+    const handleCreateTicket = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newTicket.title || !newTicket.description || !newTicket.clientId) {
             alert('Por favor, preencha o título, descrição e cliente.');
             return;
         }
-        db.createTicket(newTicket);
-        setTickets(db.getTickets());
-        setIsCreateModalOpen(false);
-        setNewTicket(initialNewTicketState);
+        try {
+            await db.createTicket(newTicket);
+            await refreshTickets();
+            setIsCreateModalOpen(false);
+            setNewTicket(initialNewTicketState);
+        } catch (error) {
+            console.error('Erro ao criar chamado:', error);
+            alert('Não foi possível criar o chamado.');
+        }
+    };
+
+    const escapeHtml = (text: string | undefined | null): string => {
+        if (!text) return '-';
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    };
+
+    const printTicket = (ticket: Partial<Ticket> & Pick<Ticket, 'title' | 'description' | 'clientId' | 'status' | 'priority' | 'location'>) => {
+        const selectedClient = clients.find(c => c.id === ticket.clientId);
+        const selectedTechnician = technicians.find(t => t.id === ticket.technicianId);
+        const now = new Date();
+        const printSettings = settingsService.getPrintHeaderSettings();
+
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        printWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="UTF-8">
+                <title>Chamado - ${escapeHtml(ticket.title || 'Novo Chamado')}</title>
+                <style>
+                    @page {
+                        size: A4;
+                        margin: 0.8cm;
+                    }
+                    * {
+                        margin: 0;
+                        padding: 0;
+                        box-sizing: border-box;
+                    }
+                    body {
+                        font-family: Arial, sans-serif;
+                        font-size: 9pt;
+                        line-height: 1.2;
+                        color: #000;
+                        padding: 0.3cm;
+                    }
+                    .header {
+                        border-bottom: 2px solid #000;
+                        padding-bottom: 6px;
+                        margin-bottom: 8px;
+                        display: flex;
+                        align-items: center;
+                        justify-content: space-between;
+                    }
+                    .header-left {
+                        flex: 1;
+                    }
+                    .header-center {
+                        flex: 2;
+                        text-align: center;
+                    }
+                    .header-right {
+                        flex: 1;
+                        text-align: right;
+                    }
+                    .header-logo {
+                        max-height: 90px;
+                        max-width: 225px;
+                        object-fit: contain;
+                    }
+                    .header h1 {
+                        font-size: 16pt;
+                        margin-bottom: 2px;
+                        line-height: 1.2;
+                    }
+                    .header p {
+                        font-size: 8pt;
+                        margin: 1px 0;
+                        line-height: 1.2;
+                    }
+                    .header-info {
+                        font-size: 7pt;
+                        line-height: 1.2;
+                    }
+                    .section {
+                        margin-bottom: 6px;
+                        page-break-inside: avoid;
+                    }
+                    .section-title {
+                        font-weight: bold;
+                        font-size: 10pt;
+                        border-bottom: 1px solid #000;
+                        margin-bottom: 3px;
+                        padding-bottom: 1px;
+                    }
+                    .row {
+                        display: flex;
+                        margin-bottom: 4px;
+                        page-break-inside: avoid;
+                    }
+                    .col {
+                        flex: 1;
+                        padding: 0 3px;
+                    }
+                    .col-2 {
+                        flex: 2;
+                    }
+                    .label {
+                        font-weight: bold;
+                        margin-bottom: 1px;
+                        font-size: 8pt;
+                    }
+                    .value {
+                        border-bottom: 1px solid #ccc;
+                        min-height: 14px;
+                        padding: 1px 3px;
+                        font-size: 8pt;
+                    }
+                    .textarea-value {
+                        border: 1px solid #ccc;
+                        min-height: 25px;
+                        padding: 3px;
+                        font-size: 8pt;
+                        white-space: pre-wrap;
+                        line-height: 1.2;
+                    }
+                    .checkbox-group {
+                        display: flex;
+                        gap: 10px;
+                        margin-top: 2px;
+                    }
+                    .checkbox-item {
+                        display: flex;
+                        align-items: center;
+                        gap: 3px;
+                        font-size: 8pt;
+                    }
+                    .signature-box {
+                        border: 1px solid #000;
+                        min-height: 35px;
+                        padding: 3px;
+                        margin-top: 2px;
+                        font-size: 8pt;
+                    }
+                    .footer {
+                        margin-top: 8px;
+                        padding-top: 5px;
+                        border-top: 1px solid #000;
+                        font-size: 7pt;
+                        text-align: center;
+                    }
+                    @media print {
+                        body {
+                            padding: 0;
+                        }
+                        .no-print {
+                            display: none;
+                        }
+                        @page {
+                            size: A4;
+                            margin: 0.8cm;
+                        }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <div class="header-left">
+                        ${printSettings.logo ? `<img src="${printSettings.logo}" alt="Logo" class="header-logo" />` : ''}
+                    </div>
+                    <div class="header-center">
+                        <h1>${escapeHtml(printSettings.companyName || 'ORDEM DE SERVIÇO')}</h1>
+                        ${printSettings.cnpj ? `<p class="header-info">CNPJ: ${escapeHtml(printSettings.cnpj)}</p>` : ''}
+                        ${printSettings.phone ? `<p class="header-info">${escapeHtml(printSettings.phone)}</p>` : ''}
+                        ${printSettings.address ? `<p class="header-info">${escapeHtml(printSettings.address)}</p>` : ''}
+                    </div>
+                    <div class="header-right">
+                        <p class="header-info">${now.toLocaleDateString('pt-BR')}</p>
+                        <p class="header-info">${now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</p>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">DADOS DO CHAMADO</div>
+                    <div class="row">
+                        <div class="col">
+                            <div class="label">Código:</div>
+                            <div class="value">${escapeHtml(ticket.code || '-')}</div>
+                        </div>
+                        <div class="col">
+                            <div class="label">Título:</div>
+                            <div class="value">${escapeHtml(ticket.title)}</div>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col">
+                            <div class="label">Status:</div>
+                            <div class="value">${escapeHtml(ticket.status)}</div>
+                        </div>
+                        <div class="col">
+                            <div class="label">Prioridade:</div>
+                            <div class="value">${escapeHtml(ticket.priority)}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">CLIENTE</div>
+                    <div class="row">
+                        <div class="col-2">
+                            <div class="label">Nome:</div>
+                            <div class="value">${escapeHtml(selectedClient?.name)}</div>
+                        </div>
+                        <div class="col">
+                            <div class="label">Localidade:</div>
+                            <div class="value">${escapeHtml(ticket.location)}</div>
+                        </div>
+                    </div>
+                    ${selectedClient ? `
+                    <div class="row">
+                        <div class="col">
+                            <div class="label">Contato:</div>
+                            <div class="value">${escapeHtml(selectedClient.contactPerson)}</div>
+                        </div>
+                        <div class="col">
+                            <div class="label">Email:</div>
+                            <div class="value">${escapeHtml(selectedClient.email)}</div>
+                        </div>
+                        <div class="col">
+                            <div class="label">Telefone:</div>
+                            <div class="value">${escapeHtml(selectedClient.phone)}</div>
+                        </div>
+                    </div>
+                    ` : ''}
+                </div>
+
+                <div class="section">
+                    <div class="section-title">TÉCNICO</div>
+                    <div class="row">
+                        <div class="col">
+                            <div class="label">Nome:</div>
+                            <div class="value">${escapeHtml(selectedTechnician?.name || 'Não atribuído')}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">DEFEITO INFORMADO</div>
+                    <div class="textarea-value">${escapeHtml(ticket.description)}</div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">DEFEITO CONSTATADO</div>
+                    <div class="textarea-value">${escapeHtml(ticket.foundDefect)}</div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">SERVIÇOS EXECUTADOS</div>
+                    <div class="textarea-value">${escapeHtml(ticket.executedServices)}</div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">OBSERVAÇÕES</div>
+                    <div class="row">
+                        <div class="col">
+                            <div class="label">Observações do Técnico:</div>
+                            <div class="textarea-value">${escapeHtml(ticket.technicianNotes)}</div>
+                        </div>
+                        <div class="col">
+                            <div class="label">Observações do Cliente:</div>
+                            <div class="textarea-value">${escapeHtml(ticket.clientNotes)}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">INFORMAÇÕES DO EQUIPAMENTO</div>
+                    <div class="textarea-value">${escapeHtml(ticket.equipmentInfo)}</div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">STATUS DO SERVIÇO</div>
+                    <div class="row">
+                        <div class="col">
+                            <span>Em Garantia:</span> <span>${ticket.underWarranty ? '☑ Sim' : '☑ Não'}</span>
+                        </div>
+                        <div class="col">
+                            <span>Em Funcionamento:</span> <span>${ticket.working ? '☑ Sim' : '☑ Não'}</span>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col">
+                            <span>Concluído:</span> <span>${ticket.serviceCompleted ? '☑ Sim' : '☑ Não'}</span>
+                        </div>
+                        <div class="col">
+                            <span>Verificado pelo Cliente:</span> <span>${ticket.verifiedByClient ? '☑ Sim' : '☑ Não'}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="section">
+                    <div class="section-title">ASSINATURAS</div>
+                    <div class="row">
+                        <div class="col">
+                            <div class="label">Assinatura do Técnico:</div>
+                            <div class="signature-box">${ticket.technicianSignature ? escapeHtml(ticket.technicianSignature) : '_________________________'}</div>
+                        </div>
+                        <div class="col">
+                            <div class="label">Assinatura do Cliente:</div>
+                            <div class="signature-box">${ticket.clientSignature ? escapeHtml(ticket.clientSignature) : '_________________________'}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="footer">
+                    <p>Documento gerado em ${now.toLocaleString('pt-BR')}</p>
+                </div>
+            </body>
+            </html>
+        `);
+
+        printWindow.document.close();
+        setTimeout(() => {
+            printWindow.focus();
+            printWindow.print();
+        }, 250);
+    };
+
+    const handlePrintTicket = () => {
+        printTicket(newTicket);
+    };
+
+    const handlePrintExistingTicket = () => {
+        if (!editingTicket) return;
+        printTicket(editingTicket);
     };
 
     const handleOpenEditModal = (ticket: Ticket) => {
@@ -196,7 +595,8 @@ const TicketsPage: React.FC = () => {
         if (!editingTicket) return;
         const { name, value } = e.target;
         
-        const newEditingTicket = { ...editingTicket, [name]: name === 'technicianId' ? (value === '' ? null : value) : value };
+        const booleanFields = new Set(['underWarranty','working','serviceCompleted','verifiedByClient']);
+        const newEditingTicket = { ...editingTicket, [name]: name === 'technicianId' ? (value === '' ? null : value) : (booleanFields.has(name) ? value === 'true' : value) } as Ticket;
 
         if (name === 'clientId') {
             const selectedClient = clients.find(c => c.id === value);
@@ -208,13 +608,18 @@ const TicketsPage: React.FC = () => {
         setEditingTicket(newEditingTicket);
     };
 
-    const handleUpdateTicket = (e: React.FormEvent) => {
+    const handleUpdateTicket = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!editingTicket) return;
-        db.updateTicket(editingTicket.id, editingTicket);
-        setTickets(db.getTickets());
-        setIsEditModalOpen(false);
-        setEditingTicket(null);
+        try {
+            await db.updateTicket(editingTicket.id, editingTicket);
+            await refreshTickets();
+            setIsEditModalOpen(false);
+            setEditingTicket(null);
+        } catch (error) {
+            console.error('Erro ao atualizar chamado:', error);
+            alert('Não foi possível atualizar o chamado.');
+        }
     };
     
     const handleOpenDeleteConfirm = (ticket: Ticket) => {
@@ -222,13 +627,18 @@ const TicketsPage: React.FC = () => {
         setIsDeleteConfirmOpen(true);
     };
 
-    const handleConfirmDelete = () => {
+    const handleConfirmDelete = async () => {
         if (!ticketToDelete) return;
-        db.deleteTicket(ticketToDelete.id);
-        setTickets(db.getTickets());
-        setIsDeleteConfirmOpen(false);
-        setTicketToDelete(null);
-        setShowDeleteToast(true);
+        try {
+            await db.deleteTicket(ticketToDelete.id);
+            await refreshTickets();
+            setIsDeleteConfirmOpen(false);
+            setTicketToDelete(null);
+            setShowDeleteToast(true);
+        } catch (error) {
+            console.error('Erro ao excluir chamado:', error);
+            alert('Não foi possível excluir o chamado.');
+        }
     };
 
 
@@ -346,8 +756,68 @@ const TicketsPage: React.FC = () => {
                                 <input type="text" name="title" id="title-create" value={newTicket.title} onChange={handleCreateInputChange} required className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
                             </div>
                              <div>
-                                <label htmlFor="description-create" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Descrição</label>
+                                <label htmlFor="description-create" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Defeito Informado</label>
                                 <textarea name="description" id="description-create" value={newTicket.description} onChange={handleCreateInputChange} required rows={4} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label htmlFor="foundDefect-create" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Defeito Constatado</label>
+                                <textarea name="foundDefect" id="foundDefect-create" value={newTicket.foundDefect} onChange={handleCreateInputChange} rows={3} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label htmlFor="executedServices-create" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Serviços Executado</label>
+                                <textarea name="executedServices" id="executedServices-create" value={newTicket.executedServices} onChange={handleCreateInputChange} rows={3} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label htmlFor="technicianNotes-create" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Observações do Técnico</label>
+                                <textarea name="technicianNotes" id="technicianNotes-create" value={newTicket.technicianNotes} onChange={handleCreateInputChange} rows={3} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label htmlFor="clientNotes-create" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Observações do Cliente</label>
+                                <textarea name="clientNotes" id="clientNotes-create" value={newTicket.clientNotes} onChange={handleCreateInputChange} rows={3} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label htmlFor="equipmentInfo-create" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Informações do Equipamento</label>
+                                <textarea name="equipmentInfo" id="equipmentInfo-create" value={newTicket.equipmentInfo} onChange={handleCreateInputChange} rows={3} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <fieldset>
+                                    <legend className="block text-sm font-medium text-slate-700 dark:text-slate-300">Em Garantia</legend>
+                                    <div className="mt-1 flex gap-4">
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="underWarranty" value="true" checked={newTicket.underWarranty === true} onChange={handleCreateInputChange}/> <span>Sim</span></label>
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="underWarranty" value="false" checked={newTicket.underWarranty === false} onChange={handleCreateInputChange}/> <span>Não</span></label>
+                                    </div>
+                                </fieldset>
+                                <fieldset>
+                                    <legend className="block text-sm font-medium text-slate-700 dark:text-slate-300">Em Funcionamento</legend>
+                                    <div className="mt-1 flex gap-4">
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="working" value="true" checked={newTicket.working === true} onChange={handleCreateInputChange}/> <span>Sim</span></label>
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="working" value="false" checked={newTicket.working === false} onChange={handleCreateInputChange}/> <span>Não</span></label>
+                                    </div>
+                                </fieldset>
+                                <fieldset>
+                                    <legend className="block text-sm font-medium text-slate-700 dark:text-slate-300">Concluído</legend>
+                                    <div className="mt-1 flex gap-4">
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="serviceCompleted" value="true" checked={newTicket.serviceCompleted === true} onChange={handleCreateInputChange}/> <span>Sim</span></label>
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="serviceCompleted" value="false" checked={newTicket.serviceCompleted === false} onChange={handleCreateInputChange}/> <span>Não</span></label>
+                                    </div>
+                                </fieldset>
+                                <fieldset>
+                                    <legend className="block text-sm font-medium text-slate-700 dark:text-slate-300">Verificado pelo Cliente</legend>
+                                    <div className="mt-1 flex gap-4">
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="verifiedByClient" value="true" checked={newTicket.verifiedByClient === true} onChange={handleCreateInputChange}/> <span>Sim</span></label>
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="verifiedByClient" value="false" checked={newTicket.verifiedByClient === false} onChange={handleCreateInputChange}/> <span>Não</span></label>
+                                    </div>
+                                </fieldset>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="technicianSignature-create" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Assinatura do Técnico</label>
+                                    <input type="text" name="technicianSignature" id="technicianSignature-create" value={newTicket.technicianSignature} onChange={handleCreateInputChange} placeholder="(Assinatura)" className="mt-1 block w-full border-dashed border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 rounded-md py-6 text-slate-500"/>
+                                </div>
+                                <div>
+                                    <label htmlFor="clientSignature-create" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Assinatura do Cliente</label>
+                                    <input type="text" name="clientSignature" id="clientSignature-create" value={newTicket.clientSignature} onChange={handleCreateInputChange} placeholder="(Assinatura)" className="mt-1 block w-full border-dashed border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 rounded-md py-6 text-slate-500"/>
+                                </div>
                             </div>
                             <div>
                                 <label htmlFor="clientId-create" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Cliente</label>
@@ -356,7 +826,7 @@ const TicketsPage: React.FC = () => {
                                     {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                                 </select>
                             </div>
-                             <div>
+                            <div>
                                 <label htmlFor="location-create" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Localidade</label>
                                 <input type="text" name="location" id="location-create" value={newTicket.location} onChange={handleCreateInputChange} required placeholder="Selecione um cliente para preencher" className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
                             </div>
@@ -385,6 +855,10 @@ const TicketsPage: React.FC = () => {
                                 <button type="button" onClick={() => setIsCreateModalOpen(false)} className="px-4 py-2 bg-slate-200 text-slate-800 rounded-md hover:bg-slate-300 dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-500">
                                     Cancelar
                                 </button>
+                                <button type="button" onClick={handlePrintTicket} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2">
+                                    <PrinterIcon className="h-5 w-5" />
+                                    Imprimir
+                                </button>
                                 <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
                                     Salvar Chamado
                                 </button>
@@ -405,8 +879,68 @@ const TicketsPage: React.FC = () => {
                                 <input type="text" name="title" id="title-edit" value={editingTicket.title} onChange={handleEditInputChange} required className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
                             </div>
                             <div>
-                                <label htmlFor="description-edit" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Descrição</label>
+                                <label htmlFor="description-edit" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Defeito Informado</label>
                                 <textarea name="description" id="description-edit" value={editingTicket.description} onChange={handleEditInputChange} required rows={4} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label htmlFor="foundDefect-edit" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Defeito Constatado</label>
+                                <textarea name="foundDefect" id="foundDefect-edit" value={editingTicket.foundDefect || ''} onChange={handleEditInputChange} rows={3} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label htmlFor="executedServices-edit" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Serviços Executado</label>
+                                <textarea name="executedServices" id="executedServices-edit" value={editingTicket.executedServices || ''} onChange={handleEditInputChange} rows={3} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label htmlFor="technicianNotes-edit" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Observações do Técnico</label>
+                                <textarea name="technicianNotes" id="technicianNotes-edit" value={editingTicket.technicianNotes || ''} onChange={handleEditInputChange} rows={3} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label htmlFor="clientNotes-edit" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Observações do Cliente</label>
+                                <textarea name="clientNotes" id="clientNotes-edit" value={editingTicket.clientNotes || ''} onChange={handleEditInputChange} rows={3} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                            </div>
+                            <div>
+                                <label htmlFor="equipmentInfo-edit" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Informações do Equipamento</label>
+                                <textarea name="equipmentInfo" id="equipmentInfo-edit" value={editingTicket.equipmentInfo || ''} onChange={handleEditInputChange} rows={3} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"></textarea>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <fieldset>
+                                    <legend className="block text-sm font-medium text-slate-700 dark:text-slate-300">Em Garantia</legend>
+                                    <div className="mt-1 flex gap-4">
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="underWarranty" value="true" checked={editingTicket.underWarranty === true} onChange={handleEditInputChange}/> <span>Sim</span></label>
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="underWarranty" value="false" checked={editingTicket.underWarranty === false} onChange={handleEditInputChange}/> <span>Não</span></label>
+                                    </div>
+                                </fieldset>
+                                <fieldset>
+                                    <legend className="block text-sm font-medium text-slate-700 dark:text-slate-300">Em Funcionamento</legend>
+                                    <div className="mt-1 flex gap-4">
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="working" value="true" checked={editingTicket.working === true} onChange={handleEditInputChange}/> <span>Sim</span></label>
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="working" value="false" checked={editingTicket.working === false} onChange={handleEditInputChange}/> <span>Não</span></label>
+                                    </div>
+                                </fieldset>
+                                <fieldset>
+                                    <legend className="block text-sm font-medium text-slate-700 dark:text-slate-300">Concluído</legend>
+                                    <div className="mt-1 flex gap-4">
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="serviceCompleted" value="true" checked={editingTicket.serviceCompleted === true} onChange={handleEditInputChange}/> <span>Sim</span></label>
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="serviceCompleted" value="false" checked={editingTicket.serviceCompleted === false} onChange={handleEditInputChange}/> <span>Não</span></label>
+                                    </div>
+                                </fieldset>
+                                <fieldset>
+                                    <legend className="block text-sm font-medium text-slate-700 dark:text-slate-300">Verificado pelo Cliente</legend>
+                                    <div className="mt-1 flex gap-4">
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="verifiedByClient" value="true" checked={editingTicket.verifiedByClient === true} onChange={handleEditInputChange}/> <span>Sim</span></label>
+                                        <label className="inline-flex items-center gap-2"><input type="radio" name="verifiedByClient" value="false" checked={editingTicket.verifiedByClient === false} onChange={handleEditInputChange}/> <span>Não</span></label>
+                                    </div>
+                                </fieldset>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label htmlFor="technicianSignature-edit" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Assinatura do Técnico</label>
+                                    <input type="text" name="technicianSignature" id="technicianSignature-edit" value={editingTicket.technicianSignature || ''} onChange={handleEditInputChange} placeholder="(Assinatura)" className="mt-1 block w-full border-dashed border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 rounded-md py-6 text-slate-500"/>
+                                </div>
+                                <div>
+                                    <label htmlFor="clientSignature-edit" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Assinatura do Cliente</label>
+                                    <input type="text" name="clientSignature" id="clientSignature-edit" value={editingTicket.clientSignature || ''} onChange={handleEditInputChange} placeholder="(Assinatura)" className="mt-1 block w-full border-dashed border-2 border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 rounded-md py-6 text-slate-500"/>
+                                </div>
                             </div>
                             <div>
                                 <label htmlFor="clientId-edit" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Cliente</label>
@@ -443,6 +977,10 @@ const TicketsPage: React.FC = () => {
                             <div className="flex justify-end gap-4 pt-4">
                                 <button type="button" onClick={() => setIsEditModalOpen(false)} className="px-4 py-2 bg-slate-200 text-slate-800 rounded-md hover:bg-slate-300 dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-500">
                                     Cancelar
+                                </button>
+                                <button type="button" onClick={handlePrintExistingTicket} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 flex items-center gap-2">
+                                    <PrinterIcon className="h-5 w-5" />
+                                    Imprimir
                                 </button>
                                 <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
                                     Atualizar Chamado

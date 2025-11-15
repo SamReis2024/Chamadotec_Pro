@@ -2,13 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/mockDB';
 import { User, Role } from '../types';
 import { PencilIcon, TrashIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import UserForm from '../components/UserForm';
 
 const roleColors: Record<Role, string> = {
     [Role.ADMIN]: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
     [Role.MANAGER]: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
     [Role.TECHNICIAN]: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
 };
-
 
 const UsersPage: React.FC = () => {
     const [users, setUsers] = useState<User[]>([]);
@@ -24,8 +24,30 @@ const UsersPage: React.FC = () => {
     const [userToDelete, setUserToDelete] = useState<User | null>(null);
 
     useEffect(() => {
-        setUsers(db.getUsers());
+        let active = true;
+
+        const loadUsers = async () => {
+            try {
+                const data = await db.getUsers();
+                if (active) {
+                    setUsers(data);
+                }
+            } catch (error) {
+                console.error('Erro ao carregar usuários:', error);
+            }
+        };
+
+        loadUsers();
+
+        return () => {
+            active = false;
+        };
     }, []);
+
+    const refreshUsers = async () => {
+        const data = await db.getUsers();
+        setUsers(data);
+    };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -36,16 +58,21 @@ const UsersPage: React.FC = () => {
         }
     };
     
-    const handleCreateUser = (e: React.FormEvent) => {
+    const handleCreateUser = async (e: React.FormEvent) => {
         e.preventDefault();
         if(!newUser.name || !newUser.email || !newUser.password) {
             alert('Preencha todos os campos obrigatórios.');
             return;
         }
-        db.createUser(newUser);
-        setUsers(db.getUsers());
-        setIsCreateModalOpen(false);
-        setNewUser(initialNewUserState);
+        try {
+            await db.createUser(newUser);
+            await refreshUsers();
+            setIsCreateModalOpen(false);
+            setNewUser(initialNewUserState);
+        } catch (error) {
+            console.error('Erro ao criar usuário:', error);
+            alert('Não foi possível criar o usuário.');
+        }
     };
 
     const handleOpenEditModal = (user: User) => {
@@ -53,14 +80,19 @@ const UsersPage: React.FC = () => {
         setIsEditModalOpen(true);
     };
     
-    const handleUpdateUser = (e: React.FormEvent) => {
+    const handleUpdateUser = async (e: React.FormEvent) => {
         e.preventDefault();
         if(!editingUser) return;
         const { password, ...userWithoutPassword } = editingUser;
-        db.updateUser(editingUser.id, userWithoutPassword);
-        setUsers(db.getUsers());
-        setIsEditModalOpen(false);
-        setEditingUser(null);
+        try {
+            await db.updateUser(editingUser.id, userWithoutPassword);
+            await refreshUsers();
+            setIsEditModalOpen(false);
+            setEditingUser(null);
+        } catch (error) {
+            console.error('Erro ao atualizar usuário:', error);
+            alert('Não foi possível atualizar o usuário.');
+        }
     }
 
     const handleOpenDeleteConfirm = (user: User) => {
@@ -68,52 +100,18 @@ const UsersPage: React.FC = () => {
         setIsDeleteConfirmOpen(true);
     }
     
-    const handleConfirmDelete = () => {
+    const handleConfirmDelete = async () => {
         if(!userToDelete) return;
-        db.deleteUser(userToDelete.id);
-        setUsers(db.getUsers());
-        setIsDeleteConfirmOpen(false);
-        setUserToDelete(null);
+        try {
+            await db.deleteUser(userToDelete.id);
+            await refreshUsers();
+            setIsDeleteConfirmOpen(false);
+            setUserToDelete(null);
+        } catch (error) {
+            console.error('Erro ao excluir usuário:', error);
+            alert('Não foi possível excluir o usuário.');
+        }
     }
-
-    const UserForm = ({ user, handleSubmit, handleInputChange, closeModal, title, submitButtonText }: any) => (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start pt-10 sm:pt-20" role="dialog">
-            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-lg">
-                <h2 className="text-2xl font-bold mb-4 text-slate-800 dark:text-white">{title}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nome</label>
-                        <input type="text" name="name" value={user.name} onChange={handleInputChange} required className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Email</label>
-                        <input type="email" name="email" value={user.email} onChange={handleInputChange} required className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
-                    </div>
-                    {!user.id && ( // Only show password field for new users
-                        <div>
-                            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Senha</label>
-                            <input type="password" name="password" value={user.password} onChange={handleInputChange} required className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
-                        </div>
-                    )}
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Função</label>
-                        <select name="role" value={user.role} onChange={handleInputChange} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-                            {Object.values(Role).map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                    </div>
-                    <div className="flex justify-end gap-4 pt-4">
-                        <button type="button" onClick={closeModal} className="px-4 py-2 bg-slate-200 text-slate-800 rounded-md hover:bg-slate-300 dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-500">
-                            Cancelar
-                        </button>
-                        <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
-                            {submitButtonText}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    )
-
 
     return (
         <div className="space-y-6">

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../services/mockDB';
 import { Client } from '../types';
 import { PencilIcon, TrashIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
+import ClientForm from '../components/ClientForm';
 
 const ClientsPage: React.FC = () => {
     const [clients, setClients] = useState<Client[]>([]);
@@ -19,8 +20,30 @@ const ClientsPage: React.FC = () => {
     const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
 
     useEffect(() => {
-        setClients(db.getClients());
+        let active = true;
+
+        const loadClients = async () => {
+            try {
+                const data = await db.getClients();
+                if (active) {
+                    setClients(data);
+                }
+            } catch (error) {
+                console.error('Erro ao carregar clientes:', error);
+            }
+        };
+
+        loadClients();
+
+        return () => {
+            active = false;
+        };
     }, []);
+
+    const refreshClients = async () => {
+        const data = await db.getClients();
+        setClients(data);
+    };
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const { name, value } = e.target;
@@ -31,16 +54,21 @@ const ClientsPage: React.FC = () => {
         }
     };
 
-    const handleCreateClient = (e: React.FormEvent) => {
+    const handleCreateClient = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!newClient.name || !newClient.email) {
             alert('Por favor, preencha o nome e o email do cliente.');
             return;
         }
-        db.createClient(newClient);
-        setClients(db.getClients());
-        setIsCreateModalOpen(false);
-        setNewClient(initialNewClientState);
+        try {
+            await db.createClient(newClient);
+            await refreshClients();
+            setIsCreateModalOpen(false);
+            setNewClient(initialNewClientState);
+        } catch (error) {
+            console.error('Erro ao criar cliente:', error);
+            alert('Não foi possível criar o cliente.');
+        }
     };
 
     const handleOpenEditModal = (client: Client) => {
@@ -48,13 +76,18 @@ const ClientsPage: React.FC = () => {
         setIsEditModalOpen(true);
     };
 
-    const handleUpdateClient = (e: React.FormEvent) => {
+    const handleUpdateClient = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!editingClient) return;
-        db.updateClient(editingClient.id, editingClient);
-        setClients(db.getClients());
-        setIsEditModalOpen(false);
-        setEditingClient(null);
+        try {
+            await db.updateClient(editingClient.id, editingClient);
+            await refreshClients();
+            setIsEditModalOpen(false);
+            setEditingClient(null);
+        } catch (error) {
+            console.error('Erro ao atualizar cliente:', error);
+            alert('Não foi possível atualizar o cliente.');
+        }
     };
 
     const handleOpenDeleteConfirm = (client: Client) => {
@@ -62,70 +95,19 @@ const ClientsPage: React.FC = () => {
         setIsDeleteConfirmOpen(true);
     };
 
-    const handleConfirmDelete = () => {
+    const handleConfirmDelete = async () => {
         if (!clientToDelete) return;
-        db.deleteClient(clientToDelete.id);
-        setClients(db.getClients());
-        setIsDeleteConfirmOpen(false);
-        setClientToDelete(null);
+        try {
+            await db.deleteClient(clientToDelete.id);
+            await refreshClients();
+            setIsDeleteConfirmOpen(false);
+            setClientToDelete(null);
+        } catch (error) {
+            console.error('Erro ao excluir cliente:', error);
+            alert('Não foi possível excluir o cliente.');
+        }
     };
 
-    const ClientForm = ({ client, handleSubmit, handleInputChange, closeModal, title, submitButtonText }: any) => (
-         <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start pt-10 sm:pt-20" role="dialog" aria-modal="true" aria-labelledby="modal-title">
-            <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                <h2 id="modal-title" className="text-2xl font-bold mb-4 text-slate-800 dark:text-white">{title}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <label htmlFor="name" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nome da Empresa</label>
-                        <input type="text" name="name" id="name" value={client.name} onChange={handleInputChange} required className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
-                    </div>
-                    <div>
-                        <label htmlFor="contactPerson" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Pessoa de Contato</label>
-                        <input type="text" name="contactPerson" id="contactPerson" value={client.contactPerson} onChange={handleInputChange} required className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
-                    </div>
-                    <div>
-                        <label htmlFor="agencyNumber" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nº da Agência</label>
-                        <input type="text" name="agencyNumber" id="agencyNumber" value={client.agencyNumber || ''} onChange={handleInputChange} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
-                    </div>
-                    <div>
-                        <label htmlFor="agencyName" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Nome da Agência</label>
-                        <input type="text" name="agencyName" id="agencyName" value={client.agencyName || ''} onChange={handleInputChange} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
-                    </div>
-                    <div>
-                        <label htmlFor="email" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Email</label>
-                        <input type="email" name="email" id="email" value={client.email} onChange={handleInputChange} required className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
-                    </div>
-                     <div>
-                        <label htmlFor="phone" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Telefone</label>
-                        <input type="tel" name="phone" id="phone" value={client.phone} onChange={handleInputChange} required className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
-                    </div>
-                    <div>
-                        <label htmlFor="address" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Endereço</label>
-                        <input type="text" name="address" id="address" value={client.address} onChange={handleInputChange} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
-                    </div>
-                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div>
-                            <label htmlFor="city" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Cidade</label>
-                            <input type="text" name="city" id="city" value={client.city} onChange={handleInputChange} required className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
-                        </div>
-                        <div>
-                            <label htmlFor="state" className="block text-sm font-medium text-slate-700 dark:text-slate-300">Estado</label>
-                            <input type="text" name="state" id="state" value={client.state} onChange={handleInputChange} required maxLength={2} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"/>
-                        </div>
-                    </div>
-                    <div className="flex justify-end gap-4 pt-4">
-                        <button type="button" onClick={closeModal} className="px-4 py-2 bg-slate-200 text-slate-800 rounded-md hover:bg-slate-300 dark:bg-slate-600 dark:text-slate-200 dark:hover:bg-slate-500">
-                            Cancelar
-                        </button>
-                        <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700">
-                            {submitButtonText}
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-    
     return (
         <div className="space-y-6">
             <div className="flex justify-between items-center">
