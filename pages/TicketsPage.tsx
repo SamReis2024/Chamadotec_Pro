@@ -241,6 +241,14 @@ const TicketsPage: React.FC = () => {
 
     const handleCreateTicket = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!user) {
+            alert('Usuário não autenticado.');
+            return;
+        }
+        if (user.role === Role.TECHNICIAN) {
+            alert('Técnicos não têm permissão para criar novos chamados.');
+            return;
+        }
         if (!newTicket.title || !newTicket.description || !newTicket.clientId) {
             alert('Por favor, preencha o título, descrição e cliente.');
             return;
@@ -653,12 +661,14 @@ const TicketsPage: React.FC = () => {
             )}
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold text-slate-800 dark:text-white">Gerenciar Chamados</h1>
-                <button 
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                    Adicionar Chamado
-                </button>
+                {user && user.role !== Role.TECHNICIAN && (
+                    <button 
+                        onClick={() => setIsCreateModalOpen(true)}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                        Adicionar Chamado
+                    </button>
+                )}
             </div>
             
             {/* Filters */}
@@ -746,7 +756,7 @@ const TicketsPage: React.FC = () => {
             </div>
 
             {/* Create Ticket Modal */}
-            {isCreateModalOpen && (
+            {isCreateModalOpen && user && user.role !== Role.TECHNICIAN && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start pt-10 sm:pt-20" role="dialog" aria-modal="true" aria-labelledby="modal-title-create">
                     <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto">
                         <h2 id="modal-title-create" className="text-2xl font-bold mb-4 text-slate-800 dark:text-white">Novo Chamado</h2>
