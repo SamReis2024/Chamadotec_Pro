@@ -24,11 +24,11 @@ const Sidebar: React.FC<SidebarProps> = ({ sidebarOpen, setSidebarOpen }) => {
     };
 
     const navItems: NavItemConfig[] = [
-        { page: 'dashboard', label: 'Dashboard', icon: ChartPieIcon, roles: [Role.ADMIN, Role.MANAGER, Role.TECHNICIAN] },
-        { page: 'tickets', label: 'Chamados', icon: TicketIcon, roles: [Role.ADMIN, Role.MANAGER, Role.TECHNICIAN] },
-        { page: 'reports', label: 'Relatórios', icon: ChartPieIcon, roles: [Role.ADMIN, Role.MANAGER, Role.TECHNICIAN] },
-        { page: 'clients', label: 'Clientes', icon: BuildingOfficeIcon, roles: [Role.ADMIN, Role.MANAGER] },
-        { page: 'users', label: 'Usuários', icon: UserGroupIcon, roles: [Role.ADMIN] },
+        { page: 'dashboard', label: 'Dashboard', icon: ChartPieIcon, roles: [Role.ADMIN, Role.MANAGER_ADMIN, Role.MANAGER, Role.TECHNICIAN] },
+        { page: 'tickets', label: 'Chamados', icon: TicketIcon, roles: [Role.ADMIN, Role.MANAGER_ADMIN, Role.MANAGER, Role.TECHNICIAN] },
+        { page: 'reports', label: 'Relatórios', icon: ChartPieIcon, roles: [Role.ADMIN, Role.MANAGER_ADMIN, Role.MANAGER, Role.TECHNICIAN] },
+        { page: 'clients', label: 'Clientes', icon: BuildingOfficeIcon, roles: [Role.ADMIN, Role.MANAGER_ADMIN, Role.MANAGER] },
+        { page: 'users', label: 'Usuários', icon: UserGroupIcon, roles: [Role.ADMIN, Role.MANAGER_ADMIN] },
         { page: 'audit', label: 'Auditoria', icon: ShieldCheckIcon, roles: [Role.ADMIN] },
         { page: 'settings', label: 'Configurações', icon: Cog6ToothIcon, roles: [Role.ADMIN] },
     ];

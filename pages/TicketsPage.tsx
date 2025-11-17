@@ -53,7 +53,7 @@ const TicketCard: React.FC<TicketCardProps> = ({ ticket, technicianName, clientN
                 <button onClick={onEdit} className="p-2 text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" aria-label="Editar chamado">
                     <PencilIcon className="h-5 w-5" />
                 </button>
-                {(userRole === Role.ADMIN || userRole === Role.MANAGER) && (
+                {(userRole === Role.ADMIN || userRole === Role.MANAGER_ADMIN || userRole === Role.MANAGER) && (
                     <button onClick={onDelete} className="p-2 text-slate-500 hover:text-red-600 dark:hover:text-red-400 rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500" aria-label="Excluir chamado">
                         <TrashIcon className="h-5 w-5" />
                     </button>

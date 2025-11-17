@@ -29,12 +29,12 @@ const AppContent: React.FC = () => {
             case 'tickets':
                 return <TicketsPage />;
             case 'clients':
-                if (user.role === Role.ADMIN || user.role === Role.MANAGER) {
+                if (user.role === Role.ADMIN || user.role === Role.MANAGER_ADMIN || user.role === Role.MANAGER) {
                     return <ClientsPage />;
                 }
                 break;
             case 'users':
-                if (user.role === Role.ADMIN) {
+                if (user.role === Role.ADMIN || user.role === Role.MANAGER_ADMIN) {
                     return <UsersPage />;
                 }
                 break;

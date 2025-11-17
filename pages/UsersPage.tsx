@@ -3,14 +3,17 @@ import { db } from '../services/mockDB';
 import { User, Role } from '../types';
 import { PencilIcon, TrashIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 import UserForm from '../components/UserForm';
+import { useAuth } from '../hooks/useAuth';
 
 const roleColors: Record<Role, string> = {
     [Role.ADMIN]: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+    [Role.MANAGER_ADMIN]: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
     [Role.MANAGER]: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
     [Role.TECHNICIAN]: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
 };
 
 const UsersPage: React.FC = () => {
+    const { user: currentUser } = useAuth();
     const [users, setUsers] = useState<User[]>([]);
 
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -60,6 +63,27 @@ const UsersPage: React.FC = () => {
     
     const handleCreateUser = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (!currentUser) {
+            alert('Usuário não autenticado.');
+            return;
+        }
+        
+        // Verificar permissões de criação baseadas no role
+        const allowedRolesForCreation: Role[] = [];
+        if (currentUser.role === Role.ADMIN) {
+            allowedRolesForCreation.push(Role.ADMIN, Role.MANAGER_ADMIN, Role.MANAGER, Role.TECHNICIAN);
+        } else if (currentUser.role === Role.MANAGER_ADMIN) {
+            allowedRolesForCreation.push(Role.MANAGER_ADMIN, Role.MANAGER, Role.TECHNICIAN);
+        } else {
+            alert('Você não tem permissão para criar usuários.');
+            return;
+        }
+        
+        if (!allowedRolesForCreation.includes(newUser.role)) {
+            alert('Você não tem permissão para criar usuários com este papel.');
+            return;
+        }
+        
         if(!newUser.name || !newUser.email || !newUser.password) {
             alert('Preencha todos os campos obrigatórios.');
             return;
@@ -117,12 +141,14 @@ const UsersPage: React.FC = () => {
         <div className="space-y-6">
             <div className="flex justify-between items-center">
                 <h1 className="text-3xl font-bold text-slate-800 dark:text-white">Usuários</h1>
-                <button 
-                    onClick={() => setIsCreateModalOpen(true)}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                    Adicionar Usuário
-                </button>
+                {currentUser && (currentUser.role === Role.ADMIN || currentUser.role === Role.MANAGER_ADMIN) && (
+                    <button 
+                        onClick={() => setIsCreateModalOpen(true)}
+                        className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    >
+                        Adicionar Usuário
+                    </button>
+                )}
             </div>
             
             <div className="bg-white dark:bg-slate-800 shadow-md rounded-lg overflow-x-auto">
@@ -157,25 +183,27 @@ const UsersPage: React.FC = () => {
                 </table>
             </div>
             
-            {isCreateModalOpen && (
+            {isCreateModalOpen && currentUser && (
                 <UserForm 
                     user={newUser} 
                     handleSubmit={handleCreateUser} 
                     handleInputChange={handleInputChange} 
                     closeModal={() => setIsCreateModalOpen(false)} 
                     title="Novo Usuário" 
-                    submitButtonText="Salvar Usuário" 
+                    submitButtonText="Salvar Usuário"
+                    currentUserRole={currentUser.role}
                 />
             )}
 
-            {isEditModalOpen && editingUser && (
+            {isEditModalOpen && editingUser && currentUser && (
                  <UserForm 
                     user={editingUser} 
                     handleSubmit={handleUpdateUser} 
                     handleInputChange={handleInputChange} 
                     closeModal={() => setIsEditModalOpen(false)} 
                     title="Editar Usuário" 
-                    submitButtonText="Atualizar Usuário" 
+                    submitButtonText="Atualizar Usuário"
+                    currentUserRole={currentUser.role}
                 />
             )}
 

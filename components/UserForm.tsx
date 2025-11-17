@@ -8,9 +8,27 @@ type Props = {
   closeModal: () => void;
   title: string;
   submitButtonText: string;
+  currentUserRole?: Role;
 };
 
-export default function UserForm({ user, handleSubmit, handleInputChange, closeModal, title, submitButtonText }: Props) {
+export default function UserForm({ user, handleSubmit, handleInputChange, closeModal, title, submitButtonText, currentUserRole }: Props) {
+  // Determinar quais roles podem ser selecionados baseado no usuário atual
+  const getAvailableRoles = (): Role[] => {
+    if (!currentUserRole) {
+      return Object.values(Role);
+    }
+    
+    if (currentUserRole === Role.ADMIN) {
+      return [Role.ADMIN, Role.MANAGER_ADMIN, Role.MANAGER, Role.TECHNICIAN];
+    } else if (currentUserRole === Role.MANAGER_ADMIN) {
+      return [Role.MANAGER_ADMIN, Role.MANAGER, Role.TECHNICIAN];
+    }
+    
+    return [];
+  };
+
+  const availableRoles = getAvailableRoles();
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-start pt-10 sm:pt-20" role="dialog">
       <div className="bg-white dark:bg-slate-800 rounded-lg shadow-xl p-6 w-full max-w-lg">
@@ -33,7 +51,7 @@ export default function UserForm({ user, handleSubmit, handleInputChange, closeM
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Função</label>
             <select name="role" value={user.role} onChange={handleInputChange} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
-              {Object.values(Role).map(r => (
+              {availableRoles.map(r => (
                 <option key={r} value={r}>{r}</option>
               ))}
             </select>
