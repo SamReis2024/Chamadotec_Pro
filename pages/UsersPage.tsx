@@ -93,9 +93,10 @@ const UsersPage: React.FC = () => {
             await refreshUsers();
             setIsCreateModalOpen(false);
             setNewUser(initialNewUserState);
-        } catch (error) {
+        } catch (error: any) {
             console.error('Erro ao criar usuário:', error);
-            alert('Não foi possível criar o usuário.');
+            const errorMessage = error?.message || 'Não foi possível criar o usuário.';
+            alert(errorMessage);
         }
     };
 

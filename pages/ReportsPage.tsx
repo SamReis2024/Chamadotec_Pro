@@ -187,7 +187,11 @@ const ReportsPage: React.FC = () => {
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Cliente</label>
             <select value={clientId} onChange={e => setClientId(e.target.value)} className="mt-1 block w-full border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-200 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
               <option value="">Todos</option>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {clients.map(c => (
+                <option key={c.id} value={c.id}>
+                  {c.name} - {c.city}, {c.state}
+                </option>
+              ))}
             </select>
           </div>
         </div>
