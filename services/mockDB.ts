@@ -281,6 +281,20 @@ class SupabaseDB {
         return data ? mapClient(data) : null;
     }
 
+    public async getTicketById(id: string): Promise<Ticket | null> {
+        const { data, error } = await supabase
+            .from('tickets')
+            .select('*')
+            .eq('id', id)
+            .maybeSingle();
+
+        if (error) {
+            throw new Error(`Erro ao buscar chamado: ${error.message}`);
+        }
+
+        return data ? mapTicket(data as TicketRow) : null;
+    }
+
     public async createClient(client: Omit<Client, 'id' | 'createdAt'>): Promise<Client> {
         const { data, error } = await supabase
             .from('clients')
